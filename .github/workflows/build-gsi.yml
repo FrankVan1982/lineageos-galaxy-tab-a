@@ -123,9 +123,10 @@ jobs:
           rm -rf ~/aosp
           ccache -C
       
-      - name: 📥 Clone script ponces treble_aosp
+      - name: 🏗️ Crea directory build e clone script
         run: |
-          cd ~
+          mkdir -p ~/aosp
+          cd ~/aosp
           
           # Determina il branch in base alla versione Android
           if [ "${{ github.event.inputs.android_version }}" = "16" ]; then
@@ -139,12 +140,8 @@ jobs:
           echo "📥 Cloning treble_aosp branch: $BRANCH"
           git clone https://github.com/ponces/treble_aosp.git -b $BRANCH --depth=1
           
+          echo "✅ Script clonato:"
           ls -la treble_aosp/
-      
-      - name: 🏗️ Crea directory build
-        run: |
-          mkdir -p ~/aosp
-          cd ~/aosp
       
       - name: 🚀 Avvia build AOSP
         run: |
