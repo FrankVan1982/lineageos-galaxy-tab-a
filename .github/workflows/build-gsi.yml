@@ -1,72 +1,74 @@
-name: Build TrebleDroid GSI (LineageOS/AOSP)
+name: Build AOSP GSI TrebleDroid (ponces)
 
 on:
   workflow_dispatch:
     inputs:
-      rom_type:
-        description: 'ROM Type'
-        required: true
-        default: 'aosp'
-        type: choice
-        options:
-          - aosp
-          - lineageos
-      
       android_version:
         description: 'Android Version'
         required: true
-        default: '16'
+        default: '15'
         type: choice
         options:
+          - '14'
           - '15'
           - '16'
       
-      variant:
-        description: 'Build variant'
+      build_type:
+        description: 'Build Type'
         required: true
-        default: 'arm64-ab-vanilla'
+        default: 'td'
         type: choice
         options:
-          - arm64-ab-vanilla
-          - arm64-ab-vndklite
-          - arm64-ab-gapps
+          - td
+          - slim
+          - core
       
       clean_build:
-        description: 'Clean build'
+        description: 'Clean build (cancella tutto e ricomincia)'
         required: false
         default: false
         type: boolean
 
 env:
-  ROM_TYPE: ${{ github.event.inputs.rom_type }}
   ANDROID_VERSION: ${{ github.event.inputs.android_version }}
-  VARIANT: ${{ github.event.inputs.variant }}
+  BUILD_TYPE: ${{ github.event.inputs.build_type }}
   
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 360
     
     steps:
       - name: 📋 Informazioni Build
         run: |
-          echo "🚀 Avvio build TrebleDroid GSI"
-          echo "📱 ROM: ${{ github.event.inputs.rom_type }}"
+          echo "🚀 Avvio build AOSP GSI TrebleDroid"
           echo "🤖 Android: ${{ github.event.inputs.android_version }}"
-          echo "📦 Variante: ${{ github.event.inputs.variant }}"
-          echo "🧹 Clean build: ${{ github.event.inputs.clean_build }}"
-          echo "💾 Runner: $(lsb_release -d | cut -f2)"
+          echo "📦 Tipo: ${{ github.event.inputs.build_type }}"
+          echo "🧹 Clean: ${{ github.event.inputs.clean_build }}"
+          echo "💾 Sistema: $(lsb_release -d | cut -f2)"
           echo "🖥️ CPU: $(nproc) cores"
           echo "💿 RAM: $(free -h | awk '/^Mem:/ {print $2}')"
-          echo "📀 Spazio disponibile: $(df -h / | awk 'NR==2 {print $4}')"
+          echo "📀 Spazio: $(df -h / | awk 'NR==2 {print $4}')"
+      
+      - name: 🧹 Libera spazio disco
+        run: |
+          echo "Rimozione pacchetti non necessari..."
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
       
       - name: 🔧 Preparazione ambiente Ubuntu
         run: |
           sudo apt-get update
           
-          # Fix per libncurses5 su Ubuntu 24.04
+          # Aggiungi repo Jammy per libncurses5
           echo "deb http://archive.ubuntu.com/ubuntu jammy main universe" | sudo tee /etc/apt/sources.list.d/jammy.list
           sudo apt-get update
           
+          # Installa dipendenze
           sudo apt-get install -y \
             git-core gnupg flex bison build-essential zip curl \
             zlib1g-dev libc6-dev-i386 x11proto-core-dev \
@@ -75,18 +77,16 @@ jobs:
             bc bzip2 ca-certificates ccache clang cmake flex g++ \
             gcc git gnupg gperf imagemagick \
             lib32readline-dev lib32z1-dev liblz4-tool \
-            libncurses-dev libssl-dev libxml2 \
-            libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
-            xsltproc zip zlib1g-dev openjdk-17-jdk jq wget
+            libncurses-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools \
+            xsltproc zip zlib1g-dev openjdk-17-jdk jq wget git-lfs
           
-          # Installa libncurses5 da Jammy
-          sudo apt-get install -y libncurses5 lib32ncurses5-dev libncurses5-dev || true
-          
-          # Crea symlink se necessario
+          # Installa libncurses5
+          sudo apt-get install -y libncurses5 lib32ncurses5-dev || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 || true
           sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
       
-      - name: 📦 Installazione Repo
+      - name: 📦 Installa Repo tool
         run: |
           sudo curl https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
           sudo chmod a+rx /usr/local/bin/repo
@@ -94,20 +94,20 @@ jobs:
       
       - name: ⚙️ Configurazione Git
         run: |
-          git config --global user.name "GitHub Actions"
+          git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           git config --global color.ui false
       
-      - name: 💾 Setup ccache
+      - name: 💾 Cache ccache
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-${{ github.run_id }}
+          key: ccache-aosp-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.build_type }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-
-            ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-
+            ccache-aosp-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.build_type }}-
+            ccache-aosp-a${{ github.event.inputs.android_version }}-
       
-      - name: 🔄 Configurazione ccache
+      - name: 🔄 Configura ccache
         run: |
           mkdir -p ~/.ccache
           echo "max_size = 50G" > ~/.ccache/ccache.conf
@@ -116,93 +116,81 @@ jobs:
           ccache -M 50G
           ccache -z
       
-      - name: 📥 Clone script di build appropriato
-        run: |
-          cd ~
-          
-          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
-            echo "📥 Cloning TrebleDroid LineageOS scripts..."
-            git clone https://github.com/TrebleDroid/treble_experimentations.git
-          else
-            echo "📥 Cloning ponces AOSP scripts..."
-            git clone https://github.com/ponces/treble_aosp.git -b android-${{ github.event.inputs.android_version }}.0
-          fi
-      
       - name: 🗑️ Pulizia build precedente
         if: github.event.inputs.clean_build == 'true'
         run: |
           echo "Rimozione build precedente..."
-          rm -rf ~/build
+          rm -rf ~/aosp
           ccache -C
       
-      - name: 🏗️ Creazione directory di build
+      - name: 📥 Clone script ponces treble_aosp
         run: |
-          mkdir -p ~/build
-          cd ~/build
-      
-      - name: 🚀 Avvio build script
-        run: |
-          cd ~/build
+          cd ~
           
+          # Determina il branch in base alla versione Android
+          if [ "${{ github.event.inputs.android_version }}" = "16" ]; then
+            BRANCH="android-16.0"
+          elif [ "${{ github.event.inputs.android_version }}" = "15" ]; then
+            BRANCH="android-15.0"
+          else
+            BRANCH="android-14.0"
+          fi
+          
+          echo "📥 Cloning treble_aosp branch: $BRANCH"
+          git clone https://github.com/ponces/treble_aosp.git -b $BRANCH --depth=1
+          
+          ls -la treble_aosp/
+      
+      - name: 🏗️ Crea directory build
+        run: |
+          mkdir -p ~/aosp
+          cd ~/aosp
+      
+      - name: 🚀 Avvia build AOSP
+        run: |
+          cd ~/aosp
+          
+          # Setup variabili ambiente
           export USE_CCACHE=1
           export CCACHE_DIR=~/.ccache
           export CCACHE_EXEC=/usr/bin/ccache
-          
-          # Limita RAM usage per evitare OOM
           export JACK_SERVER_VM_ARGUMENTS="-Dfile.encoding=UTF-8 -XX:+TieredCompilation -Xmx4g"
           
-          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
-            echo "🔨 Building LineageOS ${{ github.event.inputs.android_version }}..."
-            
-            # Determina il branch corretto
-            if [ "${{ github.event.inputs.android_version }}" = "16" ]; then
-              BRANCH="lineageos-23.0"
-            else
-              BRANCH="lineageos-22.0"
-            fi
-            
-            # Determina la variante corretta per lo script TrebleDroid
-            VARIANT_PARAM="${{ github.event.inputs.variant }}"
-            # Rimuovi 'vanilla' se presente (lo script non lo usa)
-            VARIANT_PARAM=$(echo "$VARIANT_PARAM" | sed 's/-vanilla//')
-            
-            bash ~/treble_experimentations/build-rom.sh "$BRANCH" "$VARIANT_PARAM"
-          else
-            echo "🔨 Building AOSP Android ${{ github.event.inputs.android_version }}..."
-            bash ~/treble_aosp/build.sh
-          fi
+          # Avvia build script
+          echo "🔨 Avvio build.sh con tipo: ${{ github.event.inputs.build_type }}"
+          bash ~/treble_aosp/build.sh ${{ github.event.inputs.build_type }}
       
-      - name: 📦 Trova e comprimi immagine GSI
+      - name: 📦 Trova e comprimi GSI
         run: |
-          cd ~/build
+          cd ~/aosp
           
-          # Cerca il system.img nelle varie possibili locazioni
-          SYSTEM_IMG=$(find . -name "system*.img" -o -name "*td*.img" | grep -v ".xz" | head -1)
+          # Cerca system.img nelle directory possibili
+          echo "🔍 Ricerca system.img..."
+          find . -name "system*.img" -type f
+          
+          SYSTEM_IMG=$(find out/target/product -name "system.img" -type f 2>/dev/null | head -1)
           
           if [ -z "$SYSTEM_IMG" ]; then
-            echo "❌ System image non trovata!"
-            echo "Contenuto directory build:"
-            find . -name "*.img" -o -name "*.img.xz"
+            echo "❌ system.img non trovata!"
+            echo "Contenuto out/target/product:"
+            ls -R out/target/product/ || true
             exit 1
           fi
           
-          echo "📦 Trovata immagine: $SYSTEM_IMG"
+          echo "✅ Trovata: $SYSTEM_IMG"
+          
+          # Info sulla dimensione
+          du -h "$SYSTEM_IMG"
           
           # Crea directory output
           mkdir -p ~/output
           
-          # Determina nome file output
-          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
-            OUTPUT_NAME="lineageos-${{ github.event.inputs.android_version }}"
-          else
-            OUTPUT_NAME="aosp-${{ github.event.inputs.android_version }}"
-          fi
+          # Nome file output
+          OUTPUT_NAME="aosp-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.build_type }}-arm64-ab-$(date +%Y%m%d)"
           
-          OUTPUT_NAME="${OUTPUT_NAME}-${{ github.event.inputs.variant }}-$(date +%Y%m%d).img"
-          
-          # Copia e comprimi
-          echo "📦 Compressione in corso..."
-          xz -9 -T0 -c "$SYSTEM_IMG" > ~/output/${OUTPUT_NAME}.xz
+          # Comprimi con xz
+          echo "📦 Compressione in corso (può richiedere 10-20 minuti)..."
+          xz -9 -T0 -v -c "$SYSTEM_IMG" > ~/output/${OUTPUT_NAME}.img.xz
           
           # Calcola hash
           cd ~/output
@@ -211,14 +199,23 @@ jobs:
           echo "✅ Output creato:"
           ls -lh ~/output/
       
-      - name: 📊 Statistiche ccache
+      - name: 📊 Statistiche build
         run: |
+          echo "=== Statistiche ccache ==="
           ccache -s
+          
+          echo ""
+          echo "=== Spazio disco utilizzato ==="
+          df -h
+          
+          echo ""
+          echo "=== Output finale ==="
+          ls -lh ~/output/
       
-      - name: 📤 Upload GSI artifact
+      - name: 📤 Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-${{ github.run_number }}
+          name: aosp-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.build_type }}-${{ github.run_number }}
           path: ~/output/*
           retention-days: 30
           compression-level: 0
@@ -226,24 +223,29 @@ jobs:
       - name: 🎉 Build completata!
         run: |
           echo "=========================================="
-          echo "✅ Build completata con successo!"
+          echo "✅ BUILD COMPLETATA CON SUCCESSO!"
           echo "=========================================="
-          echo "📱 ROM: ${{ github.event.inputs.rom_type }}"
-          echo "🤖 Android: ${{ github.event.inputs.android_version }}"
-          echo "📦 Variante: ${{ github.event.inputs.variant }}"
-          echo "📅 Data: $(date)"
+          echo "🤖 AOSP Android ${{ github.event.inputs.android_version }}"
+          echo "📦 Tipo: ${{ github.event.inputs.build_type }}"
+          echo "📅 Data: $(date '+%Y-%m-%d %H:%M:%S')"
           echo "=========================================="
           echo ""
-          echo "📥 Scarica l'artifact dal tab Actions"
+          echo "📥 DOWNLOAD:"
+          echo "   Vai su Actions > questa run > Artifacts"
           echo ""
-          echo "⚠️ IMPORTANTE per SM-T515:"
-          echo "1. Usa il tuo boot.img con kernel TGK"
-          echo "2. Usa il tuo vendor.img esistente"
-          echo "3. Flash via TWRP o fastbootd"
+          echo "⚠️  FLASH SU SM-T515:"
+          echo "   1. Decomprimi: unxz file.img.xz"
+          echo "   2. Verifica hash: sha256sum -c sha256sum.txt"
+          echo "   3. Reboot recovery: adb reboot recovery"
+          echo "   4. In TWRP: Install > Install Image"
+          echo "   5. Seleziona System Image"
+          echo "   6. IMPORTANTE: Reflash boot.img TGK!"
+          echo "   7. IMPORTANTE: Reflash vendor.img!"
+          echo "   8. Wipe dalvik + cache"
+          echo "   9. Reboot"
           echo ""
-          echo "🔧 Flash con fastbootd:"
-          echo "  adb reboot fastboot"
-          echo "  fastboot flash system system-*.img"
-          echo "  fastboot reboot recovery"
-          echo "  # Factory reset in recovery"
+          echo "📝 TIPI DI BUILD:"
+          echo "   • td (TrebleDroid) - Build completa con tutte le features"
+          echo "   • slim - Build ridotta senza bloat"
+          echo "   • core - Build minimale AOSP puro"
           echo "=========================================="
