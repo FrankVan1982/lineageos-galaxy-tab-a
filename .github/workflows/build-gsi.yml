@@ -1,27 +1,46 @@
-name: Build LineageOS 23 GSI (TrebleDroid)
+name: Build TrebleDroid GSI (LineageOS/AOSP)
 
 on:
-  # Trigger manualmente dal tab Actions
   workflow_dispatch:
     inputs:
-      variant:
-        description: 'Build variant (arm64-ab or arm64-ab-gapps)'
+      rom_type:
+        description: 'ROM Type'
         required: true
-        default: 'arm64-ab'
+        default: 'aosp'
         type: choice
         options:
-          - arm64-ab
+          - aosp
+          - lineageos
+      
+      android_version:
+        description: 'Android Version'
+        required: true
+        default: '16'
+        type: choice
+        options:
+          - '15'
+          - '16'
+      
+      variant:
+        description: 'Build variant'
+        required: true
+        default: 'arm64-ab-vanilla'
+        type: choice
+        options:
+          - arm64-ab-vanilla
+          - arm64-ab-vndklite
           - arm64-ab-gapps
       
       clean_build:
-        description: 'Clean build (rimuove tutto e ricomincia da zero)'
+        description: 'Clean build'
         required: false
         default: false
         type: boolean
 
 env:
-  MANIFEST_BRANCH: lineageos-23.0
-  DEVICE_VARIANT: ${{ github.event.inputs.variant }}
+  ROM_TYPE: ${{ github.event.inputs.rom_type }}
+  ANDROID_VERSION: ${{ github.event.inputs.android_version }}
+  VARIANT: ${{ github.event.inputs.variant }}
   
 jobs:
   build:
@@ -30,8 +49,10 @@ jobs:
     steps:
       - name: 📋 Informazioni Build
         run: |
-          echo "🚀 Avvio build LineageOS 23 GSI"
-          echo "📱 Variante: ${{ github.event.inputs.variant }}"
+          echo "🚀 Avvio build TrebleDroid GSI"
+          echo "📱 ROM: ${{ github.event.inputs.rom_type }}"
+          echo "🤖 Android: ${{ github.event.inputs.android_version }}"
+          echo "📦 Variante: ${{ github.event.inputs.variant }}"
           echo "🧹 Clean build: ${{ github.event.inputs.clean_build }}"
           echo "💾 Runner: $(lsb_release -d | cut -f2)"
           echo "🖥️ CPU: $(nproc) cores"
@@ -41,24 +62,35 @@ jobs:
       - name: 🔧 Preparazione ambiente Ubuntu
         run: |
           sudo apt-get update
+          
+          # Fix per libncurses5 su Ubuntu 24.04
+          echo "deb http://archive.ubuntu.com/ubuntu jammy main universe" | sudo tee /etc/apt/sources.list.d/jammy.list
+          sudo apt-get update
+          
           sudo apt-get install -y \
             git-core gnupg flex bison build-essential zip curl \
             zlib1g-dev libc6-dev-i386 x11proto-core-dev \
             libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils \
             xsltproc unzip fontconfig python3 python3-pip python-is-python3 \
-            bc bzip2 ca-certificates ccache clang cmake curl flex g++ \
+            bc bzip2 ca-certificates ccache clang cmake flex g++ \
             gcc git gnupg gperf imagemagick \
             lib32readline-dev lib32z1-dev liblz4-tool \
-            libsdl1.2-dev libssl-dev libxml2 \
+            libncurses-dev libssl-dev libxml2 \
             libxml2-utils lzop pngcrush rsync schedtool squashfs-tools \
-            xsltproc zip zlib1g-dev openjdk-17-jdk repo jq
+            xsltproc zip zlib1g-dev openjdk-17-jdk jq wget
+          
+          # Installa libncurses5 da Jammy
+          sudo apt-get install -y libncurses5 lib32ncurses5-dev libncurses5-dev || true
+          
+          # Crea symlink se necessario
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 || true
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
       
       - name: 📦 Installazione Repo
         run: |
-          mkdir -p ~/.bin
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
-          chmod a+rx ~/.bin/repo
-          echo "$HOME/.bin" >> $GITHUB_PATH
+          sudo curl https://storage.googleapis.com/git-repo-downloads/repo -o /usr/local/bin/repo
+          sudo chmod a+rx /usr/local/bin/repo
+          repo version
       
       - name: ⚙️ Configurazione Git
         run: |
@@ -70,10 +102,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-lineage23-${{ github.event.inputs.variant }}-${{ github.run_id }}
+          key: ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-${{ github.run_id }}
           restore-keys: |
-            ccache-lineage23-${{ github.event.inputs.variant }}-
-            ccache-lineage23-
+            ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-
+            ccache-${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-
       
       - name: 🔄 Configurazione ccache
         run: |
@@ -84,144 +116,109 @@ jobs:
           ccache -M 50G
           ccache -z
       
-      - name: 📥 Clone TrebleDroid scripts
+      - name: 📥 Clone script di build appropriato
         run: |
           cd ~
-          git clone https://github.com/TrebleDroid/treble_experimentations.git
-          cd treble_experimentations
-          git log -1
+          
+          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
+            echo "📥 Cloning TrebleDroid LineageOS scripts..."
+            git clone https://github.com/TrebleDroid/treble_experimentations.git
+          else
+            echo "📥 Cloning ponces AOSP scripts..."
+            git clone https://github.com/ponces/treble_aosp.git -b android-${{ github.event.inputs.android_version }}.0
+          fi
       
-      - name: 🗑️ Pulizia build precedente (se richiesta)
+      - name: 🗑️ Pulizia build precedente
         if: github.event.inputs.clean_build == 'true'
         run: |
           echo "Rimozione build precedente..."
-          rm -rf ~/lineage23
+          rm -rf ~/build
           ccache -C
       
       - name: 🏗️ Creazione directory di build
         run: |
-          mkdir -p ~/lineage23
-          cd ~/lineage23
+          mkdir -p ~/build
+          cd ~/build
       
-      - name: 📲 Sync sorgenti LineageOS 23
+      - name: 🚀 Avvio build script
         run: |
-          cd ~/lineage23
+          cd ~/build
           
-          # Inizializza repo con manifest TrebleDroid
-          repo init -u https://github.com/LineageOS/android.git -b lineageos-23.0 --git-lfs --depth=1
-          
-          # Aggiungi local_manifests per TrebleDroid
-          mkdir -p .repo/local_manifests
-          
-          cat > .repo/local_manifests/treble.xml << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <manifest>
-            <!-- TrebleDroid -->
-            <remote name="tdroid" fetch="https://github.com/TrebleDroid/" />
-            
-            <project path="device/phh/treble" name="device_phh_treble" remote="tdroid" revision="android-16.0" />
-            <project path="vendor/hardware_overlay" name="vendor_hardware_overlay" remote="tdroid" revision="android-16.0" />
-            
-            <!-- Replace AOSP packages -->
-            <remove-project name="LineageOS/android_frameworks_base" />
-            <project path="frameworks/base" name="platform_frameworks_base" remote="tdroid" revision="android-16.0" />
-            
-            <remove-project name="LineageOS/android_system_core" />
-            <project path="system/core" name="platform_system_core" remote="tdroid" revision="android-16.0" />
-            
-            <remove-project name="LineageOS/android_system_sepolicy" />
-            <project path="system/sepolicy" name="platform_system_sepolicy" remote="tdroid" revision="android-16.0" />
-            
-            <remove-project name="LineageOS/android_vendor_lineage" />
-            <project path="vendor/lineage" name="platform_vendor_lineage" remote="tdroid" revision="android-16.0" />
-          </manifest>
-          EOF
-          
-          echo "📥 Inizio sync dei sorgenti (può richiedere 2-3 ore)..."
-          repo sync -c -j$(nproc) --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
-      
-      - name: 🔨 Apply patches TrebleDroid
-        run: |
-          cd ~/lineage23
-          
-          # Apply patches dallo script TrebleDroid
-          bash ~/treble_experimentations/apply-patches.sh ~/treble_experimentations trebledroid
-          
-          # Verifica che le patch siano applicate
-          echo "✅ Patches applicate con successo"
-      
-      - name: 🎯 Setup ambiente build
-        run: |
-          cd ~/lineage23
-          source build/envsetup.sh
-          
-          # Imposta variabili per ottimizzare la build
           export USE_CCACHE=1
           export CCACHE_DIR=~/.ccache
           export CCACHE_EXEC=/usr/bin/ccache
           
-          # Per evitare OOM su GitHub Actions (7GB RAM)
+          # Limita RAM usage per evitare OOM
           export JACK_SERVER_VM_ARGUMENTS="-Dfile.encoding=UTF-8 -XX:+TieredCompilation -Xmx4g"
-      
-      - name: 🚀 Build GSI
-        run: |
-          cd ~/lineage23
-          source build/envsetup.sh
           
-          export USE_CCACHE=1
-          export CCACHE_DIR=~/.ccache
-          
-          # Determina il target in base alla variante
-          if [[ "${{ github.event.inputs.variant }}" == "arm64-ab-gapps" ]]; then
-            export WITH_GAPPS=true
+          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
+            echo "🔨 Building LineageOS ${{ github.event.inputs.android_version }}..."
+            
+            # Determina il branch corretto
+            if [ "${{ github.event.inputs.android_version }}" = "16" ]; then
+              BRANCH="lineageos-23.0"
+            else
+              BRANCH="lineageos-22.0"
+            fi
+            
+            # Determina la variante corretta per lo script TrebleDroid
+            VARIANT_PARAM="${{ github.event.inputs.variant }}"
+            # Rimuovi 'vanilla' se presente (lo script non lo usa)
+            VARIANT_PARAM=$(echo "$VARIANT_PARAM" | sed 's/-vanilla//')
+            
+            bash ~/treble_experimentations/build-rom.sh "$BRANCH" "$VARIANT_PARAM"
+          else
+            echo "🔨 Building AOSP Android ${{ github.event.inputs.android_version }}..."
+            bash ~/treble_aosp/build.sh
           fi
-          
-          # Build command
-          echo "🔨 Avvio build per ${{ github.event.inputs.variant }}"
-          
-          # TrebleDroid usa treble_arm64_bvN per arm64-ab
-          lunch treble_arm64_bvN-ap2a-userdebug
-          
-          # Build con numero limitato di job per evitare OOM
-          make -j$(nproc) systemimage
-          
-          echo "✅ Build completata!"
       
-      - name: 📦 Comprimi immagine GSI
+      - name: 📦 Trova e comprimi immagine GSI
         run: |
-          cd ~/lineage23
+          cd ~/build
           
-          # Trova il system.img
-          SYSTEM_IMG=$(find out/target/product/tdgsi_arm64_ab/system*.img 2>/dev/null | head -1)
+          # Cerca il system.img nelle varie possibili locazioni
+          SYSTEM_IMG=$(find . -name "system*.img" -o -name "*td*.img" | grep -v ".xz" | head -1)
           
           if [ -z "$SYSTEM_IMG" ]; then
-            echo "❌ system.img non trovato!"
+            echo "❌ System image non trovata!"
+            echo "Contenuto directory build:"
+            find . -name "*.img" -o -name "*.img.xz"
             exit 1
           fi
           
-          echo "📦 Comprimo $SYSTEM_IMG"
+          echo "📦 Trovata immagine: $SYSTEM_IMG"
           
           # Crea directory output
           mkdir -p ~/output
           
-          # Comprimi con xz
-          xz -9 -T0 -c "$SYSTEM_IMG" > ~/output/lineageos-22.0-${{ github.event.inputs.variant }}-$(date +%Y%m%d).img.xz
+          # Determina nome file output
+          if [ "${{ github.event.inputs.rom_type }}" = "lineageos" ]; then
+            OUTPUT_NAME="lineageos-${{ github.event.inputs.android_version }}"
+          else
+            OUTPUT_NAME="aosp-${{ github.event.inputs.android_version }}"
+          fi
+          
+          OUTPUT_NAME="${OUTPUT_NAME}-${{ github.event.inputs.variant }}-$(date +%Y%m%d).img"
+          
+          # Copia e comprimi
+          echo "📦 Compressione in corso..."
+          xz -9 -T0 -c "$SYSTEM_IMG" > ~/output/${OUTPUT_NAME}.xz
           
           # Calcola hash
           cd ~/output
           sha256sum *.img.xz > sha256sum.txt
           
-          echo "✅ Compressione completata"
+          echo "✅ Output creato:"
           ls -lh ~/output/
       
       - name: 📊 Statistiche ccache
         run: |
           ccache -s
       
-      - name: 📤 Upload GSI come artifact
+      - name: 📤 Upload GSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lineageos-23-gsi-${{ github.event.inputs.variant }}-${{ github.run_number }}
+          name: ${{ github.event.inputs.rom_type }}-a${{ github.event.inputs.android_version }}-${{ github.event.inputs.variant }}-${{ github.run_number }}
           path: ~/output/*
           retention-days: 30
           compression-level: 0
@@ -231,22 +228,22 @@ jobs:
           echo "=========================================="
           echo "✅ Build completata con successo!"
           echo "=========================================="
-          echo "📱 ROM: LineageOS 23"
-          echo "🎯 Variante: ${{ github.event.inputs.variant }}"
+          echo "📱 ROM: ${{ github.event.inputs.rom_type }}"
+          echo "🤖 Android: ${{ github.event.inputs.android_version }}"
+          echo "📦 Variante: ${{ github.event.inputs.variant }}"
           echo "📅 Data: $(date)"
           echo "=========================================="
           echo ""
-          echo "📥 Scarica l'artifact dal tab Actions di questa build"
+          echo "📥 Scarica l'artifact dal tab Actions"
           echo ""
-          echo "⚠️ IMPORTANTE:"
-          echo "1. Questa è una GSI arm64-ab (NON vndklite)"
-          echo "2. Usa il tuo boot.img con kernel TGK"
-          echo "3. Usa il tuo vendor.img esistente"
+          echo "⚠️ IMPORTANTE per SM-T515:"
+          echo "1. Usa il tuo boot.img con kernel TGK"
+          echo "2. Usa il tuo vendor.img esistente"
+          echo "3. Flash via TWRP o fastbootd"
           echo ""
-          echo "🔧 Flash sul dispositivo:"
-          echo "  adb reboot recovery"
-          echo "  # In TWRP:"
-          echo "  # Install > Install Image > seleziona lineageos-23.0-*.img.xz"
-          echo "  # Seleziona System Image"
-          echo "  # Reflash boot.img e vendor.img se necessario"
+          echo "🔧 Flash con fastbootd:"
+          echo "  adb reboot fastboot"
+          echo "  fastboot flash system system-*.img"
+          echo "  fastboot reboot recovery"
+          echo "  # Factory reset in recovery"
           echo "=========================================="
