@@ -1,4 +1,4 @@
-name: Build LineageOS 22 GSI (TrebleDroid)
+name: Build LineageOS 23 GSI (TrebleDroid)
 
 on:
   # Trigger manualmente dal tab Actions
@@ -20,7 +20,7 @@ on:
         type: boolean
 
 env:
-  MANIFEST_BRANCH: lineageos-22.0
+  MANIFEST_BRANCH: lineageos-23.0
   DEVICE_VARIANT: ${{ github.event.inputs.variant }}
   
 jobs:
@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: 📋 Informazioni Build
         run: |
-          echo "🚀 Avvio build LineageOS 22 GSI"
+          echo "🚀 Avvio build LineageOS 23 GSI"
           echo "📱 Variante: ${{ github.event.inputs.variant }}"
           echo "🧹 Clean build: ${{ github.event.inputs.clean_build }}"
           echo "💾 Runner: $(lsb_release -d | cut -f2)"
@@ -70,10 +70,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: ccache-lineage22-${{ github.event.inputs.variant }}-${{ github.run_id }}
+          key: ccache-lineage23-${{ github.event.inputs.variant }}-${{ github.run_id }}
           restore-keys: |
-            ccache-lineage22-${{ github.event.inputs.variant }}-
-            ccache-lineage22-
+            ccache-lineage23-${{ github.event.inputs.variant }}-
+            ccache-lineage23-
       
       - name: 🔄 Configurazione ccache
         run: |
@@ -95,20 +95,20 @@ jobs:
         if: github.event.inputs.clean_build == 'true'
         run: |
           echo "Rimozione build precedente..."
-          rm -rf ~/lineage22
+          rm -rf ~/lineage23
           ccache -C
       
       - name: 🏗️ Creazione directory di build
         run: |
-          mkdir -p ~/lineage22
-          cd ~/lineage22
+          mkdir -p ~/lineage23
+          cd ~/lineage23
       
-      - name: 📲 Sync sorgenti LineageOS 22
+      - name: 📲 Sync sorgenti LineageOS 23
         run: |
-          cd ~/lineage22
+          cd ~/lineage23
           
           # Inizializza repo con manifest TrebleDroid
-          repo init -u https://github.com/LineageOS/android.git -b lineageos-22.0 --git-lfs --depth=1
+          repo init -u https://github.com/LineageOS/android.git -b lineageos-23.0 --git-lfs --depth=1
           
           # Aggiungi local_manifests per TrebleDroid
           mkdir -p .repo/local_manifests
@@ -119,21 +119,21 @@ jobs:
             <!-- TrebleDroid -->
             <remote name="tdroid" fetch="https://github.com/TrebleDroid/" />
             
-            <project path="device/phh/treble" name="device_phh_treble" remote="tdroid" revision="android-15.0" />
-            <project path="vendor/hardware_overlay" name="vendor_hardware_overlay" remote="tdroid" revision="android-15.0" />
+            <project path="device/phh/treble" name="device_phh_treble" remote="tdroid" revision="android-16.0" />
+            <project path="vendor/hardware_overlay" name="vendor_hardware_overlay" remote="tdroid" revision="android-16.0" />
             
             <!-- Replace AOSP packages -->
             <remove-project name="LineageOS/android_frameworks_base" />
-            <project path="frameworks/base" name="platform_frameworks_base" remote="tdroid" revision="android-15.0" />
+            <project path="frameworks/base" name="platform_frameworks_base" remote="tdroid" revision="android-16.0" />
             
             <remove-project name="LineageOS/android_system_core" />
-            <project path="system/core" name="platform_system_core" remote="tdroid" revision="android-15.0" />
+            <project path="system/core" name="platform_system_core" remote="tdroid" revision="android-16.0" />
             
             <remove-project name="LineageOS/android_system_sepolicy" />
-            <project path="system/sepolicy" name="platform_system_sepolicy" remote="tdroid" revision="android-15.0" />
+            <project path="system/sepolicy" name="platform_system_sepolicy" remote="tdroid" revision="android-16.0" />
             
             <remove-project name="LineageOS/android_vendor_lineage" />
-            <project path="vendor/lineage" name="platform_vendor_lineage" remote="tdroid" revision="android-15.0" />
+            <project path="vendor/lineage" name="platform_vendor_lineage" remote="tdroid" revision="android-16.0" />
           </manifest>
           EOF
           
@@ -142,7 +142,7 @@ jobs:
       
       - name: 🔨 Apply patches TrebleDroid
         run: |
-          cd ~/lineage22
+          cd ~/lineage23
           
           # Apply patches dallo script TrebleDroid
           bash ~/treble_experimentations/apply-patches.sh ~/treble_experimentations trebledroid
@@ -152,7 +152,7 @@ jobs:
       
       - name: 🎯 Setup ambiente build
         run: |
-          cd ~/lineage22
+          cd ~/lineage23
           source build/envsetup.sh
           
           # Imposta variabili per ottimizzare la build
@@ -165,7 +165,7 @@ jobs:
       
       - name: 🚀 Build GSI
         run: |
-          cd ~/lineage22
+          cd ~/lineage23
           source build/envsetup.sh
           
           export USE_CCACHE=1
@@ -189,7 +189,7 @@ jobs:
       
       - name: 📦 Comprimi immagine GSI
         run: |
-          cd ~/lineage22
+          cd ~/lineage23
           
           # Trova il system.img
           SYSTEM_IMG=$(find out/target/product/tdgsi_arm64_ab/system*.img 2>/dev/null | head -1)
@@ -221,7 +221,7 @@ jobs:
       - name: 📤 Upload GSI come artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lineageos-22-gsi-${{ github.event.inputs.variant }}-${{ github.run_number }}
+          name: lineageos-23-gsi-${{ github.event.inputs.variant }}-${{ github.run_number }}
           path: ~/output/*
           retention-days: 30
           compression-level: 0
@@ -231,7 +231,7 @@ jobs:
           echo "=========================================="
           echo "✅ Build completata con successo!"
           echo "=========================================="
-          echo "📱 ROM: LineageOS 22"
+          echo "📱 ROM: LineageOS 23"
           echo "🎯 Variante: ${{ github.event.inputs.variant }}"
           echo "📅 Data: $(date)"
           echo "=========================================="
@@ -246,7 +246,7 @@ jobs:
           echo "🔧 Flash sul dispositivo:"
           echo "  adb reboot recovery"
           echo "  # In TWRP:"
-          echo "  # Install > Install Image > seleziona lineageos-22.0-*.img.xz"
+          echo "  # Install > Install Image > seleziona lineageos-23.0-*.img.xz"
           echo "  # Seleziona System Image"
           echo "  # Reflash boot.img e vendor.img se necessario"
           echo "=========================================="
